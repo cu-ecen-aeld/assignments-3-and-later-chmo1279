@@ -1,5 +1,11 @@
+#define _GNU_SOURCE
 #include "systemcalls.h"
-
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -16,8 +22,9 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    int rc = system(cmd);
+    if (!rc) return true;
+    else return false;
 }
 
 /**
@@ -44,12 +51,11 @@ bool do_exec(int count, ...)
     {
         command[i] = va_arg(args, char *);
     }
-    command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
     command[count] = command[count];
-
-/*
+    command[count] = NULL;
+ /*
  * TODO:
  *   Execute a system command by calling fork, execv(),
  *   and wait instead of system (see LSP page 161).
@@ -58,10 +64,21 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
+    
+    int status;
+    pid_t ret;
+    fflush(stdout);
+    ret = fork();
+    if (!ret) { //child process
+        execv(command[0], command);
+        exit(1);
+    } else if (ret > 0) { //parent process
+         wait(&status);
+         if (!WEXITSTATUS(status)) return true;
+         else return false;
+    } else return false; //error 
+    
     va_end(args);
-
-    return true;
 }
 
 /**
@@ -92,8 +109,28 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
-
+    int status;
+    pid_t ret;
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0){ 
+        perror("open"); 
+        abort(); 
+    } 
+    fflush(stdout);
+    ret = fork();
+    if (!ret) { //child process
+        if (dup2(fd, 1) < 0){ 
+            perror("dup2"); 
+            abort(); 
+        }
+        execv(command[0], command);
+        close(fd);
+        return true;
+    } else if (ret > 0) { //parent process
+         wait(&status);
+         if (!WEXITSTATUS(status)) return true;
+         else return false;
+    } else return false; //error 
     va_end(args);
 
-    return true;
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script outline to install and build kernel.
-# Author: Siddhant Jajoo.
+# Author: Christopher Morgan
 
 set -e
 set -u
@@ -12,7 +12,7 @@ BUSYBOX_VERSION=1_33_1
 FINDER_APP_DIR=$(realpath $(dirname $0))
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
-LIBS=/usr/local/arm-cross-compiler/install/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc
+
 if [ $# -lt 1 ]
 then
 	echo "Using default directory ${OUTDIR} for output"
@@ -86,11 +86,11 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
-cp ${LIBS}/lib/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib/.
+cp ${FINDER_APP_DIR}/deps/libs/lib/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib/.
 
-cp ${LIBS}/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64/.
-cp ${LIBS}/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64/.
-cp ${LIBS}/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64/.
+cp ${FINDER_APP_DIR}/deps/libs/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64/.
+cp ${FINDER_APP_DIR}/deps/libs/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64/.
+cp ${FINDER_APP_DIR}/deps/libs/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64/.
 # TODO: Make device nodes
 cd "$OUTDIR/rootfs"
 sudo mknod -m 666 dev/null c 1 3
@@ -98,19 +98,19 @@ sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 cd "$OUTDIR/rootfs/home"
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/writer.c . 
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/Makefile .
+cp ${FINDER_APP_DIR}/deps/finder-app/writer.c . 
+cp ${FINDER_APP_DIR}/deps/finder-app/Makefile .
 make clean
 make CROSS_COMPILE=aarch64-none-linux-gnu-
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
 mkdir ../conf
 mkdir ./conf
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/finder-test.sh .
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/conf/username.txt ./conf/.
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/conf/assignment.txt ../conf/.
-cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/finder.sh .
-cp /home/vivis/git/school/linux-1/assignments-3-and-later-chmo1279/finder-app/autorun-qemu.sh .
+cp ${FINDER_APP_DIR}/deps/conf/username.txt ./conf/.
+cp ${FINDER_APP_DIR}/deps/conf/assignment.txt ../conf/.
+cp ${FINDER_APP_DIR}/deps/finder-app/finder-test.sh .
+cp ${FINDER_APP_DIR}/deps/finder-app/finder.sh .
+cp ${FINDER_APP_DIR}/deps/finder-app/autorun-qemu.sh .
 # TODO: Chown the root directory
 sudo chown -R root "$OUTDIR/rootfs"
 # TODO: Create initramfs.cpio.gz

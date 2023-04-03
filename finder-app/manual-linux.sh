@@ -12,7 +12,7 @@ BUSYBOX_VERSION=1_33_1
 FINDER_APP_DIR=$(realpath $(dirname $0))
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
-
+LIBS=/usr/local/arm-cross-compiler/install/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc
 if [ $# -lt 1 ]
 then
 	echo "Using default directory ${OUTDIR} for output"
@@ -35,9 +35,17 @@ if [ ! -e ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image ]; then
     git checkout ${KERNEL_VERSION}
 
     # TODO: Add your kernel build steps here
+    make ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} mrproper
+    make ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} defconfig
+    sed -i '41d' ${OUTDIR}/linux-stable/scripts/dtc/dtc-lexer.l
+#    sed -i '629d' /tmp/aeld/linux-stable/scripts/dtc/dtc-lexer.lex.c
+    make -j4 ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} all
+    make ARCH=arm64 CROSS_COMPILE=${CROSS_COMPILE} dtbs
+    echo "Finished building kernel."
 fi
 
 echo "Adding the Image in outdir"
+cp ${OUTDIR}/linux-stable/arch/${ARCH}/boot/Image $OUTDIR
 
 echo "Creating the staging directory for the root filesystem"
 cd "$OUTDIR"
@@ -48,6 +56,12 @@ then
 fi
 
 # TODO: Create necessary base directories
+cd "$OUTDIR"
+mkdir rootfs
+cd rootfs
+mkdir -p bin dev etc home lib lib64 proc sbin sys tmp usr var
+mkdir -p usr/bin usr/lib usr/sbin
+mkdir -p var/log
 
 cd "$OUTDIR"
 if [ ! -d "${OUTDIR}/busybox" ]
@@ -61,20 +75,46 @@ else
 fi
 
 # TODO: Make and install busybox
+make distclean
+make defconfig
+make ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE}
+make CONFIG_PREFIX=${OUTDIR}/rootfs ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE} install
 
 echo "Library dependencies"
+cd "$OUTDIR/rootfs"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "program interpreter"
 ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 # TODO: Add library dependencies to rootfs
+cp ${LIBS}/lib/ld-linux-aarch64.so.1 ${OUTDIR}/rootfs/lib/.
 
+cp ${LIBS}/lib64/libm.so.6 ${OUTDIR}/rootfs/lib64/.
+cp ${LIBS}/lib64/libresolv.so.2 ${OUTDIR}/rootfs/lib64/.
+cp ${LIBS}/lib64/libc.so.6 ${OUTDIR}/rootfs/lib64/.
 # TODO: Make device nodes
+cd "$OUTDIR/rootfs"
+sudo mknod -m 666 dev/null c 1 3
+sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
-
+cd "$OUTDIR/rootfs/home"
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/writer.c . 
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/Makefile .
+make clean
+make CROSS_COMPILE=aarch64-none-linux-gnu-
 # TODO: Copy the finder related scripts and executables to the /home directory
 # on the target rootfs
-
+mkdir ../conf
+mkdir ./conf
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/finder-test.sh .
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/conf/username.txt ./conf/.
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/conf/assignment.txt ../conf/.
+cp /home/vivis/git/school/linux-1/assignment-2-chmo1279/finder-app/finder.sh .
+cp /home/vivis/git/school/linux-1/assignments-3-and-later-chmo1279/finder-app/autorun-qemu.sh .
 # TODO: Chown the root directory
-
+sudo chown -R root "$OUTDIR/rootfs"
 # TODO: Create initramfs.cpio.gz
+cd "$OUTDIR/rootfs"
+find . | cpio -H newc -ov --owner root:root > ${OUTDIR}/initramfs.cpio
+cd "$OUTDIR"
+gzip -f initramfs.cpio

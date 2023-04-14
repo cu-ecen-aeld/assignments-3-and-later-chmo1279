@@ -22,7 +22,7 @@ struct thread_data{
     int wait_to_obtain_ms;
     int wait_to_release_ms;
     pthread_t thread;
-    pthread_mutex_t mutex;
+    pthread_mutex_t *mutex;
     bool thread_complete_success;
 };
 

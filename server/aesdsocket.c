@@ -13,6 +13,10 @@
 #define PORT "9000"   // port we're listening on
 #define DATAOUTPUTFILE "/var/tmp/aesdsocketdata" // file to save received data
 
+// memory related
+char *text;
+FILE *fptr;
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -28,6 +32,7 @@ void sig_handler(int signo)
     if (signo == SIGINT || signo == SIGTERM){
         // complete open connection operations
         // close any open sockets
+        fclose(fptr);
         remove(DATAOUTPUTFILE); // delete the file /var/tmp/aesdsocketdata
         syslog(LOG_SYSLOG, "Caught signal, exiting");
     }
@@ -43,7 +48,6 @@ int _daemon(int nochdir, int noclose)
         exit(EXIT_SUCCESS);
     return 0;
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -64,9 +68,6 @@ int main(int argc, char *argv[])
         return -1;
     } 
 
-
-
-    FILE *fptr;       // create file out pointer
     
     fptr = fopen(DATAOUTPUTFILE, "a+");
     fd_set master;    // master file descriptor list
@@ -209,7 +210,7 @@ int main(int argc, char *argv[])
                         long numbytes = ftell(fptr);
                         fseek(fptr,0L,SEEK_SET);
 
-                        char *text = malloc(numbytes);
+                        text = malloc(numbytes);
                         fread(text, sizeof(char),numbytes, fptr);
                         for(j = 0; j <= fdmax; j++) {
                             // send to everyone!
@@ -225,7 +226,6 @@ int main(int argc, char *argv[])
                         }
                         free(text);
                     }
-
                 } // END handle data from client
             } // END got new incoming connection
         } // END looping through file descriptors

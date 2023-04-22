@@ -9,7 +9,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <signal.h>
-#include <limits.h>
 
 #define PORT "9000"   // port we're listening on
 #define DATAOUTPUTFILE "/var/tmp/aesdsocketdata" // file to save received data
@@ -34,9 +33,39 @@ void sig_handler(int signo)
     }
 }
 
-
-int main(void)
+int _daemon(int nochdir, int noclose) 
 {
+    pid_t pid;
+    pid = fork(); // Fork off the parent process
+    if (pid < 0) 
+        exit(EXIT_FAILURE);
+    if (pid > 0) 
+        exit(EXIT_SUCCESS);
+    return 0;
+}
+
+
+int main(int argc, char *argv[])
+{
+    //command line arg processing
+    if (argc == 1) {
+        printf("Entering interactive mode...\n");
+    } else if (argc == 2) {
+        if (!(strcmp(argv[1], "-d"))){ // not sure why strcmp is *not*, but this is for option "-d"
+            printf("Entering daemon mode...\n");
+            _daemon(0,0); // start as daemon (fork as child and terminate parent)
+        }
+        else {
+            printf("Unknown argument %s.\n", argv[1]);
+            return -1;
+        }
+    } else if( argc > 2 ) {
+        printf("Too many arguments supplied.\n");
+        return -1;
+    } 
+
+
+
     FILE *fptr;       // create file out pointer
     
     fptr = fopen(DATAOUTPUTFILE, "a+");
@@ -180,7 +209,6 @@ int main(void)
                         long numbytes = ftell(fptr);
                         fseek(fptr,0L,SEEK_SET);
 
-//                        char *text = (char*)calloc(numbytes, sizeof(char));
                         char *text = malloc(numbytes);
                         fread(text, sizeof(char),numbytes, fptr);
                         for(j = 0; j <= fdmax; j++) {
@@ -191,24 +219,17 @@ int main(void)
                                     
                                     if (send(j, text, numbytes , 0) == -1) {
                                         perror("send");
-
                                     }
                                 }
                             }
                         }
-                        //free(text);
+                        free(text);
                     }
 
                 } // END handle data from client
             } // END got new incoming connection
         } // END looping through file descriptors
     } // END for(;;)--and you thought it would never end!
+    fclose(fptr);
     return 0;
-
-                        fclose(fptr);
-}
-
-void send_line(const char *line)
-{
-
 }

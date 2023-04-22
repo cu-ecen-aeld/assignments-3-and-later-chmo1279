@@ -68,7 +68,6 @@ int main(int argc, char *argv[])
         return -1;
     } 
 
-    
     fptr = fopen(DATAOUTPUTFILE, "a+");
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()

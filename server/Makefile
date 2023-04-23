@@ -1,22 +1,18 @@
-CFLAGS= -O0 -g $(INCLUDE_DIRS) $(CDEFS)
+# the compiler: gcc for C program, define as g++ for C++
+CC = $(CROSS_COMPILE)gcc
 
-PRODUCT= aesdsocket
+# compiler flags:
+#  -g    adds debugging information to the executable file
+#  -Wall turns on most, but not all, compiler warnings
+CFLAGS  = -Wall
 
-CFILES= aesdsocket.c
+# the build target executable:
+TARGET = aesdsocket
 
-SRCS= ${CFILES}
-OBJS= ${CFILES:.c=.o}
+all: $(TARGET)
 
-all:	${PRODUCT}
+$(TARGET): $(TARGET).c
+	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).c
 
 clean:
-	-rm -f *.o *.NEW *~ *.d
-	-rm -f ${PRODUCT} ${GARBAGE}
-
-inet_server:	aesdsocket.o
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ aesdsocket.o $(LIBS)
-
-depend:
-
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+	$(RM) $(TARGET)

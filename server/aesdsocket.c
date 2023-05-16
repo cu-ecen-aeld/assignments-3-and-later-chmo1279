@@ -20,10 +20,6 @@
 char *text;
 FILE *fptr;
 
-//timer related definitions
-void expired();
-pid_t gettid(void);
-
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -55,6 +51,9 @@ int _daemon(int nochdir, int noclose)
         exit(EXIT_SUCCESS);
     return 0;
 }
+//timer related definitions
+void expired();
+pid_t gettid(void);
 
 //Timer Thread
 //based code madified from https://opensource.com/article/21/10/linux-timers
@@ -107,7 +106,6 @@ void expired(){
  
     info = localtime( &rawtime );
  
-//    strftime(buffer,80,"timestamp:%x - %I:%M%p\n", info);
     strftime(buffer,80,"timestamp:%c\n", info);
     fptr = fopen(DATAOUTPUTFILE, "a+");
     fputs(buffer ,fptr); 
@@ -117,11 +115,6 @@ void expired(){
 int main(int argc, char *argv[])
 {
 
-    //start timer thread
-    //    pthread_t timerThread;
-    pthread_t timerThread;
-    pthread_create(&timerThread,NULL, timer, NULL);
-    pthread_join(timerThread, NULL);
     //command line arg processing
     if (argc == 1) {
         printf("Entering interactive mode...\n");
@@ -139,7 +132,11 @@ int main(int argc, char *argv[])
         return -1;
     } 
 
-//    fptr = fopen(DATAOUTPUTFILE, "a+");
+    //start timer thread
+    pthread_t timerThread;
+    pthread_create(&timerThread,NULL, timer, NULL);
+    pthread_join(timerThread, NULL);
+
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number

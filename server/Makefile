@@ -5,6 +5,7 @@ CC = $(CROSS_COMPILE)gcc
 #  -g    adds debugging information to the executable file
 #  -Wall turns on most, but not all, compiler warnings
 CFLAGS  = -Wall
+LDFLAGS = -pthread -lrt
 
 # the build target executable:
 TARGET = aesdsocket
@@ -12,7 +13,7 @@ TARGET = aesdsocket
 all: $(TARGET)
 
 $(TARGET): $(TARGET).c
-	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).c
+	$(CC) $(CFLAGS) -o $(TARGET) $(TARGET).c $(LDFLAGS)
 
 clean:
 	$(RM) $(TARGET)

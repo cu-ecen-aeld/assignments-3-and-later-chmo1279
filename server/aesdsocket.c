@@ -9,6 +9,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <signal.h>
+#include <errno.h>
+#include <time.h>
+#include <pthread.h>
 
 #define PORT "9000"   // port we're listening on
 #define DATAOUTPUTFILE "/var/tmp/aesdsocketdata" // file to save received data
@@ -16,6 +19,10 @@
 // memory related
 char *text;
 FILE *fptr;
+
+//timer related definitions
+void expired();
+pid_t gettid(void);
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -49,8 +56,73 @@ int _daemon(int nochdir, int noclose)
     return 0;
 }
 
+//Timer Thread
+//based code madified from https://opensource.com/article/21/10/linux-timers
+void *timer(){
+    int res = 0;
+    timer_t timerId = 0;
+
+    /*  sigevent specifies behaviour on expiration  */
+    struct sigevent sev = { 0 };
+
+    /* specify start delay and interval
+     * it_value and it_interval must not be zero */
+
+    struct itimerspec its = {   .it_value.tv_sec  = 10,
+                                .it_value.tv_nsec = 0,
+                                .it_interval.tv_sec  = 10,
+                                .it_interval.tv_nsec = 0
+                            };
+
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_notify_function = &expired;
+
+
+    /* create timer */
+    res = timer_create(CLOCK_REALTIME, &sev, &timerId);
+    
+
+    if (res != 0){
+        fprintf(stderr, "Error timer_create: %s\n", strerror(errno));
+        exit(-1);
+    }
+
+    /* start timer */
+    res = timer_settime(timerId, 0, &its, NULL);
+
+    if (res != 0){
+        fprintf(stderr, "Error timer_settime: %s\n", strerror(errno));
+        exit(-1);
+    }
+    return NULL;
+}
+
+// When timer expires (modified code from https://www.tutorialspoint.com/c_standard_library/c_function_strftime.htm)
+void expired(){
+    time_t rawtime;
+    struct tm *info;
+    char buffer[80];
+ 
+    time( &rawtime );
+ 
+    info = localtime( &rawtime );
+ 
+//    strftime(buffer,80,"timestamp:%x - %I:%M%p\n", info);
+    strftime(buffer,80,"timestamp:%c\n", info);
+    fptr = fopen(DATAOUTPUTFILE, "a+");
+    fputs(buffer ,fptr); 
+    fclose(fptr);
+}
+
+
 int main(int argc, char *argv[])
 {
+
+    //start timer thread
+    //    pthread_t timerThread;
+    pthread_t timerThread;
+    pthread_create(&timerThread,NULL, timer, NULL);
+    pthread_join(timerThread, NULL);
     //command line arg processing
     if (argc == 1) {
         printf("Entering interactive mode...\n");
@@ -68,7 +140,7 @@ int main(int argc, char *argv[])
         return -1;
     } 
 
-    fptr = fopen(DATAOUTPUTFILE, "a+");
+//    fptr = fopen(DATAOUTPUTFILE, "a+");
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
@@ -203,6 +275,7 @@ int main(int argc, char *argv[])
                     } else {
                         // we got some data from a client
                         // write to file
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
                         fputs(buf, fptr);
 
                         fseek(fptr, 0L, SEEK_END);

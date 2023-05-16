@@ -114,7 +114,6 @@ void expired(){
     fclose(fptr);
 }
 
-
 int main(int argc, char *argv[])
 {
 
@@ -277,11 +276,11 @@ int main(int argc, char *argv[])
                         // write to file
                         fptr = fopen(DATAOUTPUTFILE, "a+");
                         fputs(buf, fptr);
-
+                        fclose(fptr);
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
                         fseek(fptr, 0L, SEEK_END);
                         long numbytes = ftell(fptr);
                         fseek(fptr,0L,SEEK_SET);
-
                         text = malloc(numbytes);
                         fread(text, sizeof(char),numbytes, fptr);
                         for(j = 0; j <= fdmax; j++) {

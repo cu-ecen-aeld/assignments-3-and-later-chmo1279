@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <time.h>
 #include <pthread.h>
+#include "queue.h"
 
 #define PORT "9000"   // port we're listening on
 #define DATAOUTPUTFILE "/var/tmp/aesdsocketdata" // file to save received data

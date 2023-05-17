@@ -20,6 +20,9 @@
 char *text;
 FILE *fptr;
 
+//mutex related
+pthread_mutex_t lock;
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -107,9 +110,11 @@ void expired(){
     info = localtime( &rawtime );
  
     strftime(buffer,80,"timestamp:%c\n", info);
+    pthread_mutex_lock(&lock);
     fptr = fopen(DATAOUTPUTFILE, "a+");
     fputs(buffer ,fptr); 
     fclose(fptr);
+    pthread_mutex_unlock(&lock);
 }
 
 int main(int argc, char *argv[])
@@ -271,9 +276,11 @@ int main(int argc, char *argv[])
                     } else {
                         // we got some data from a client
                         // write to file
+                        pthread_mutex_lock(&lock);
                         fptr = fopen(DATAOUTPUTFILE, "a+");
                         fputs(buf, fptr);
                         fclose(fptr);
+                        pthread_mutex_unlock(&lock);
                         fptr = fopen(DATAOUTPUTFILE, "a+");
                         fseek(fptr, 0L, SEEK_END);
                         long numbytes = ftell(fptr);

@@ -12,7 +12,6 @@
 #include <errno.h>
 #include <time.h>
 #include <pthread.h>
-#include <limits.h>
 #include "queue.h"
 
 #define PORT "9000"   // port we're listening on
@@ -119,117 +118,6 @@ void expired(){
     pthread_mutex_unlock(&lock);
 }
 
-//this is a dirty struct... no one should do this... (ie mark for refactor/cleanup***
-typedef struct connection_params {
-    int i; //this is connection instance number
-    int listener;
-    socklen_t addrlen;
-    struct sockaddr_storage remoteaddr;
-    int newfd;
-    fd_set master;
-    int fdmax;
-    char remoteIP[INET6_ADDRSTRLEN];
-} connection_instance;
-
-void *connection_data_thread(connection_instance *connection_data_thread_pointer)
-{
-    //connection_instance connection_data_thread_pointer = connection_instance_p;
-    int         i                           = connection_data_thread_pointer->i;
-    int         listener                    = connection_data_thread_pointer->listener;
-    int         nbytes;
-    int         newfd                       = connection_data_thread_pointer->newfd;
-    int         fdmax                       = connection_data_thread_pointer->fdmax;
-    char        remoteIP[INET6_ADDRSTRLEN]; //  = connection_data_thread_pointer.remoteIP;
-    char        buf[200];                // = connection_data_thread_pointer.buf;    // buffer for client data
-    socklen_t   addrlen                     = connection_data_thread_pointer->addrlen;
-    fd_set      master                      = connection_data_thread_pointer->master;
-    int j;
-    struct      sockaddr_storage remoteaddr;
-
-    strncpy(remoteIP, connection_data_thread_pointer->remoteIP, sizeof(connection_data_thread_pointer->remoteIP));
-    
-    if (i == listener) {
-        // handle new connections
-        addrlen = sizeof remoteaddr;
-        printf("listener before accept: %d\n",listener);
-        printf("i before accept: %d\n",i);
-        newfd = accept(listener,
-            (struct sockaddr *)&remoteaddr,
-            &addrlen);
-        printf("listener after accept: %d\n",listener);
-        if (newfd == -1) {
-            perror("accept");
-        } else {
-            FD_SET(newfd, &master); // add to master set
-            if (newfd > fdmax) {    // keep track of the max
-                fdmax = newfd;
-            }
-            
-            syslog(LOG_SYSLOG, "Accepted connection from %s", 
-                    inet_ntop(remoteaddr.ss_family,
-                    get_in_addr((struct sockaddr*)&remoteaddr),
-                    remoteIP, INET6_ADDRSTRLEN));
-    
-            printf("aesdsocket: new connection from %s on "
-                "socket %d\n",
-                inet_ntop(remoteaddr.ss_family,
-                    get_in_addr((struct sockaddr*)&remoteaddr),
-                    remoteIP, INET6_ADDRSTRLEN),
-                newfd);
-        }
-    } else {
-        printf("America's most blunted\n");
-        // handle data from a client
-        memset(buf, 0, sizeof buf); 
-        if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
-            // got error or connection closed by client
-            if (nbytes == 0) {
-                // connection closed
-                printf("aesdsocket: socket %d hung up\n", i);
-                syslog(LOG_SYSLOG, "Closed connection from %s", 
-                    inet_ntop(remoteaddr.ss_family,
-                    get_in_addr((struct sockaddr*)&remoteaddr),
-                    remoteIP, INET6_ADDRSTRLEN));
-    
-            } else {
-                perror("recv");
-            }
-            close(i); // bye!
-            FD_CLR(i, &master); // remove from master set
-        } else {
-            // we got some data from a client
-            // write to file
-            pthread_mutex_lock(&lock);
-            fptr = fopen(DATAOUTPUTFILE, "a+");
-            fputs(buf, fptr);
-            fclose(fptr);
-            pthread_mutex_unlock(&lock);
-            fptr = fopen(DATAOUTPUTFILE, "a+");
-            fseek(fptr, 0L, SEEK_END);
-            long numbytes = ftell(fptr);
-            fseek(fptr,0L,SEEK_SET);
-            text = malloc(numbytes);
-            fread(text, sizeof(char),numbytes, fptr);
-            for(j = 0; j <= fdmax; j++) {
-                // send to everyone!
-                if (FD_ISSET(j, &master)) {
-                    // except the listener and ourselves
-                    if (j != listener) {
-                        
-                        if (send(j, text, numbytes , 0) == -1) {
-                            perror("send");
-                        }
-                    }
-                }
-            }
-            free(text);
-            fclose(fptr);
-        }
-    } // END handle data from client
-}
-
-    
-
 int main(int argc, char *argv[])
 {
 
@@ -252,24 +140,25 @@ int main(int argc, char *argv[])
 
     //start timer thread
     pthread_t timerThread;
-    pthread_t connThread[64];
     pthread_create(&timerThread,NULL, timer, NULL);
     pthread_join(timerThread, NULL);
-
-    connection_instance connection_data_thread_pointer[64];
 
     fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
 
     int listener;     // listening socket descriptor
-    int newfd;        // newly accepted socket descriptor
+    int newfd;        // newly accept()ed socket descriptor
+    struct sockaddr_storage remoteaddr; // client address
     socklen_t addrlen;
+
+    char buf[999999];    // buffer for client data
+    int nbytes;
 
     char remoteIP[INET6_ADDRSTRLEN];
 
     int yes=1;        // for setsockopt() SO_REUSEADDR, below
-    int i, rv;
+    int i, j, rv;
 
     struct addrinfo hints, *ai, *p;
 
@@ -340,22 +229,83 @@ int main(int argc, char *argv[])
         // run through the existing connections looking for data to read
         for(i = 0; i <= fdmax; i++) {
             if (FD_ISSET(i, &read_fds)) { // we got one!!
-/* start a thread for new connection*/ 
-               printf("listener before thread spinup: %d\n",listener);           
-               connection_data_thread_pointer[i].i           = i;                           
-               connection_data_thread_pointer[i].listener    = listener;                     
-               connection_data_thread_pointer[i].newfd       = newfd;                        
-               connection_data_thread_pointer[i].fdmax       = fdmax;                        
-               connection_data_thread_pointer[i].addrlen     = addrlen;
-               connection_data_thread_pointer[i].master      = master;                       
-               strncpy(connection_data_thread_pointer[i].remoteIP, remoteIP, sizeof(remoteIP));
-               pthread_create(&connThread[i], NULL, connection_data_thread, (void *)&connection_data_thread_pointer[i]);
-               pthread_join((pthread_t)connThread[i], NULL);
-/*end thread*/
+                if (i == listener) {
+                    // handle new connections
+                    addrlen = sizeof remoteaddr;
+                    newfd = accept(listener,
+                        (struct sockaddr *)&remoteaddr,
+                        &addrlen);
+
+                    if (newfd == -1) {
+                        perror("accept");
+                    } else {
+                        FD_SET(newfd, &master); // add to master set
+                        if (newfd > fdmax) {    // keep track of the max
+                            fdmax = newfd;
+                        }
+                        
+                        syslog(LOG_SYSLOG, "Accepted connection from %s", 
+                                inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN));
+
+                        printf("aesdsocket: new connection from %s on "
+                            "socket %d\n",
+                            inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN),
+                            newfd);
+                    }
+                } else {
+                    // handle data from a client
+                    memset(buf, 0, sizeof buf); 
+                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
+                        // got error or connection closed by client
+                        if (nbytes == 0) {
+                            // connection closed
+                            printf("aesdsocket: socket %d hung up\n", i);
+                            syslog(LOG_SYSLOG, "Closed connection from %s", 
+                                inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN));
+
+                        } else {
+                            perror("recv");
+                        }
+                        close(i); // bye!
+                        FD_CLR(i, &master); // remove from master set
+                    } else {
+                        // we got some data from a client
+                        // write to file
+                        pthread_mutex_lock(&lock);
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
+                        fputs(buf, fptr);
+                        fclose(fptr);
+                        pthread_mutex_unlock(&lock);
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
+                        fseek(fptr, 0L, SEEK_END);
+                        long numbytes = ftell(fptr);
+                        fseek(fptr,0L,SEEK_SET);
+                        text = malloc(numbytes);
+                        fread(text, sizeof(char),numbytes, fptr);
+                        for(j = 0; j <= fdmax; j++) {
+                            // send to everyone!
+                            if (FD_ISSET(j, &master)) {
+                                // except the listener and ourselves
+                                if (j != listener) {
+                                    
+                                    if (send(j, text, numbytes , 0) == -1) {
+                                        perror("send");
+                                    }
+                                }
+                            }
+                        }
+                        free(text);
+                    }
+                } // END handle data from client
             } // END got new incoming connection
         } // END looping through file descriptors
     } // END for(;;)--and you thought it would never end!
+    fclose(fptr);
     return 0;
 }
-
-

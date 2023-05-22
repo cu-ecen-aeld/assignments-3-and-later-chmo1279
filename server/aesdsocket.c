@@ -142,17 +142,23 @@ void *connection_data_thread(connection_instance *connection_data_thread_pointer
     //connection_instance connection_data_thread_pointer = connection_instance_p;
     int         i                           = connection_data_thread_pointer->i;
     int         listener                    = connection_data_thread_pointer->listener;
-    int         nbytes;
     int         newfd                       = connection_data_thread_pointer->newfd;
     int         fdmax                       = connection_data_thread_pointer->fdmax;
-    char        remoteIP[INET6_ADDRSTRLEN]; //  = connection_data_thread_pointer.remoteIP;
+    char        remoteIP[INET6_ADDRSTRLEN]; // = connection_data_thread_pointer->remoteIP;
     char        buf[200];                // = connection_data_thread_pointer.buf;    // buffer for client data
     socklen_t   addrlen                     = connection_data_thread_pointer->addrlen;
 //    fd_set      master                      = connection_data_thread_pointer->master;
+    int         nbytes;
     int j, rc;
     struct      sockaddr_storage remoteaddr;
-
-    strncpy(remoteIP, connection_data_thread_pointer->remoteIP, sizeof(connection_data_thread_pointer->remoteIP));
+    syslog(LOG_SYSLOG, "i after thread spinup/struct storage:%d\n", i);
+    syslog(LOG_SYSLOG, "listener after thread spinup/struct storage:%d\n", listener);
+    syslog(LOG_SYSLOG, "newfd after thread spinup/struct storage:%d\n", newfd);
+    syslog(LOG_SYSLOG, "fdmax after thread spinup/struct storage:%d\n", fdmax);
+    syslog(LOG_SYSLOG, "addrlen after thread spinup/struct storage:%d\n", addrlen);
+    strncpy(remoteIP, connection_data_thread_pointer->remoteIP, sizeof(remoteIP));
+    remoteIP[sizeof(remoteIP) - 1] = '\0';
+    syslog(LOG_SYSLOG, "remoteIP after thread spinup/struct storage:%s\n", remoteIP);
         // handle data from a client
         memset(buf, 0, sizeof buf); 
         if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
@@ -347,7 +353,12 @@ int main(int argc, char *argv[])
                             newfd);
                     }
                 } else {
-               printf("listener before thread spinup: %d\n",listener);           
+                syslog(LOG_SYSLOG, "i before thread spinup/struct storage:%d\n", i);
+                syslog(LOG_SYSLOG, "listener before thread spinup/struct storage:%d\n", listener);
+                syslog(LOG_SYSLOG, "newfd before thread spinup/struct storage:%d\n", newfd);
+                syslog(LOG_SYSLOG, "fdmax before thread spinup/struct storage:%d\n", fdmax);
+                syslog(LOG_SYSLOG, "addrlen before thread spinup/struct storage:%d\n", addrlen);
+                syslog(LOG_SYSLOG, "remoteIP before thread spinup/struct storage:%s\n", remoteIP);
                connection_data_thread_pointer[i].i           = i;                           
                connection_data_thread_pointer[i].listener    = listener;                     
                connection_data_thread_pointer[i].newfd       = newfd;                        
@@ -364,5 +375,3 @@ int main(int argc, char *argv[])
     } // END for(;;)--and you thought it would never end!
     return 0;
 }
-
-

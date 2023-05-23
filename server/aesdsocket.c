@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <limits.h>
 #include <linux/unistd.h>
+#include <semaphore.h>
 #include "queue.h"
 
 #define PORT "9000"   // port we're listening on
@@ -29,6 +30,7 @@ pthread_mutex_t lock;
 
 //thread related
 int thread_total;
+sem_t conn_thread_sem;
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -162,6 +164,7 @@ void *connection_data_thread(void *connection_data_thread_ptr)
     remoteIP[sizeof(remoteIP) - 1] = '\0';
     syslog(LOG_SYSLOG, "remoteIP after thread spinup/struct storage:%s\n", remoteIP);
         // handle data from a client
+    sem_wait(&conn_thread_sem);
         memset(buf, 0, sizeof buf); 
         if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
             // got error or connection closed by client
@@ -262,6 +265,8 @@ int main(int argc, char *argv[])
     FD_ZERO(&master);    // clear the master and temp sets
     FD_ZERO(&read_fds);
 
+    sem_init(&conn_thread_sem, 1, 0);
+
     //handle signals
     if (signal(SIGINT, sig_handler) == SIG_ERR)
         printf("\ncan't catch SIGINT\n");
@@ -357,12 +362,12 @@ int main(int argc, char *argv[])
                             newfd);
                     }
                 } else {
-                syslog(LOG_SYSLOG, "i before thread spinup/struct storage:%d\n", i);
-                syslog(LOG_SYSLOG, "listener before thread spinup/struct storage:%d\n", listener);
-                syslog(LOG_SYSLOG, "newfd before thread spinup/struct storage:%d\n", newfd);
-                syslog(LOG_SYSLOG, "fdmax before thread spinup/struct storage:%d\n", fdmax);
-                syslog(LOG_SYSLOG, "addrlen before thread spinup/struct storage:%d\n", addrlen);
-                syslog(LOG_SYSLOG, "remoteIP before thread spinup/struct storage:%s\n", remoteIP);
+               syslog(LOG_SYSLOG, "i before thread spinup/struct storage:%d\n", i);
+               syslog(LOG_SYSLOG, "listener before thread spinup/struct storage:%d\n", listener);
+               syslog(LOG_SYSLOG, "newfd before thread spinup/struct storage:%d\n", newfd);
+               syslog(LOG_SYSLOG, "fdmax before thread spinup/struct storage:%d\n", fdmax);
+               syslog(LOG_SYSLOG, "addrlen before thread spinup/struct storage:%d\n", addrlen);
+               syslog(LOG_SYSLOG, "remoteIP before thread spinup/struct storage:%s\n", remoteIP);
                connection_data_thread_pointer[i].i           = i;                           
                connection_data_thread_pointer[i].listener    = listener;                     
                connection_data_thread_pointer[i].newfd       = newfd;                        
@@ -371,6 +376,7 @@ int main(int argc, char *argv[])
 //               connection_data_thread_pointer[i].master      = master;                       
                strncpy(connection_data_thread_pointer[i].remoteIP, remoteIP, sizeof(remoteIP));
                pthread_create(&connThread[i], NULL, connection_data_thread, (void *)&connection_data_thread_pointer[i]);
+               sem_post(&conn_thread_sem);
                pthread_join((pthread_t)connThread[i], NULL);
                }
 /*end thread*/

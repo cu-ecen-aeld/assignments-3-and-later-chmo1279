@@ -46,8 +46,8 @@ void sig_handler(int signo)
         // complete open connection operations
         // close any open sockets
         fptr = fopen(DATAOUTPUTFILE, "a+");
-        int rc = fclose(fptr);
-        rc = remove(DATAOUTPUTFILE); // delete the file /var/tmp/aesdsocketdata
+        fclose(fptr);
+        remove(DATAOUTPUTFILE); // delete the file /var/tmp/aesdsocketdata
         syslog(LOG_SYSLOG, "Caught signal, exiting");
     }
 }
@@ -108,7 +108,8 @@ void *timer(){
 }
 
 // When timer expires (modified code from https://www.tutorialspoint.com/c_standard_library/c_function_strftime.htm)
-void expired(){
+void expired()
+{
     time_t rawtime;
     struct tm *info;
     char buffer[80];
@@ -126,7 +127,7 @@ void expired(){
 }
 
 //this is a dirty struct... no one should do this... (ie mark for refactor/cleanup***
-typedef struct connection_params {
+struct connection_params {
     int i; //this is connection instance number
     int listener;
     socklen_t addrlen;
@@ -135,11 +136,12 @@ typedef struct connection_params {
 
     int fdmax;
     char remoteIP[INET6_ADDRSTRLEN];
-} connection_instance;
+};
 
-void *connection_data_thread(connection_instance *connection_data_thread_pointer)
+
+void *connection_data_thread(void *connection_data_thread_ptr)
 {
-    //connection_instance connection_data_thread_pointer = connection_instance_p;
+   struct connection_params *connection_data_thread_pointer = (struct connection_params *)connection_data_thread_ptr;  
     int         i                           = connection_data_thread_pointer->i;
     int         listener                    = connection_data_thread_pointer->listener;
     int         newfd                       = connection_data_thread_pointer->newfd;
@@ -208,6 +210,7 @@ void *connection_data_thread(connection_instance *connection_data_thread_pointer
             free(text);
             //fclose(fptr);
         }
+return NULL;
 }
 
     
@@ -238,7 +241,7 @@ int main(int argc, char *argv[])
     pthread_create(&timerThread,NULL, timer, NULL);
     pthread_join(timerThread, NULL);
 
-    connection_instance connection_data_thread_pointer[64];
+    //struct connection_params connection_data_thread_pointer[64];
 
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
@@ -254,6 +257,7 @@ int main(int argc, char *argv[])
 
     struct addrinfo hints, *ai, *p;
     struct sockaddr_storage remoteaddr;
+    struct connection_params connection_data_thread_pointer[64];
 
     FD_ZERO(&master);    // clear the master and temp sets
     FD_ZERO(&read_fds);

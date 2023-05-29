@@ -1,5 +1,3 @@
-#include <fcntl.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,9 +12,6 @@
 #include <errno.h>
 #include <time.h>
 #include <pthread.h>
-#include <limits.h>
-#include <linux/unistd.h>
-#include <sys/queue.h>
 
 #define PORT "9000"   // port we're listening on
 #define DATAOUTPUTFILE "/var/tmp/aesdsocketdata" // file to save received data
@@ -24,22 +19,6 @@
 // memory related
 char *text;
 FILE *fptr;
-fd_set master;
-
-//mutex related
-pthread_mutex_t lock;
-
-//thread related
-
-typedef struct threads{
-    pthread_t ids;
-    int new_fd;
-    TAILQ_ENTRY(threads) nodes;
-    bool finished;
-} node_t;
-
-typedef TAILQ_HEAD(head_s,node) head_t;
-head_t head;
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -51,33 +30,15 @@ void *get_in_addr(struct sockaddr *sa)
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-//pre termination house keeping
-void *expurgation()
-{
-    for(;;){
-        node_t *tmp = NULL;
-        TAILQ_FOREACH(tmp, &head, nodes){
-            if(tmp->finished == 1){
-                pthread_join(tmp->ids, NULL);
-            }
-            TAILQ_REMOVE(&head, tmp, nodes);
-            free(tmp);
-            break;
-        }
-    }
-    return NULL;
-}
-
 void sig_handler(int signo)
 {
     if (signo == SIGINT || signo == SIGTERM){
         // complete open connection operations
         // close any open sockets
-        fptr = fopen(DATAOUTPUTFILE, "a+");
-        fclose(fptr);
+        if (fptr)
+            fclose(fptr);
         remove(DATAOUTPUTFILE); // delete the file /var/tmp/aesdsocketdata
         syslog(LOG_SYSLOG, "Caught signal, exiting");
-        expurgation();
         exit(1);
     }
 }
@@ -95,35 +56,6 @@ int _daemon(int nochdir, int noclose)
 //timer related definitions
 void expired();
 pid_t gettid(void);
-
-node_t *_fill_queue(head_t *head, const pthread_t threadid, const int new_fd)
-{
-    struct threads *e = malloc(sizeof(struct threads));
-    if (e == NULL)
-    {
-        fprintf(stderr, "malloc failed");
-        exit(EXIT_FAILURE);
-    }
-    e->ids = threadid;
-    e->new_fd = new_fd;
-    e->finished = 0;
-    TAILQ_INSERT_TAIL(head, e, nodes);
-    e = NULL;
-    return TAILQ_LAST(head, head_s);
-}
-
-// Removes all of the elements from the queue before free()ing them.
-void _free_queue(head_t * head)
-{
-    struct threads *e = NULL;
-    while (!TAILQ_EMPTY(head))
-    {
-        e = TAILQ_FIRST(head);
-        TAILQ_REMOVE(head, e, nodes);
-        free(e);
-        e = NULL;
-    }
-}
 
 //Timer Thread
 //based code madified from https://opensource.com/article/21/10/linux-timers
@@ -167,8 +99,7 @@ void *timer(){
 }
 
 // When timer expires (modified code from https://www.tutorialspoint.com/c_standard_library/c_function_strftime.htm)
-void expired()
-{
+void expired(){
     time_t rawtime;
     struct tm *info;
     char buffer[80];
@@ -178,56 +109,9 @@ void expired()
     info = localtime( &rawtime );
  
     strftime(buffer,80,"timestamp:%c\n", info);
-    pthread_mutex_lock(&lock);
     fptr = fopen(DATAOUTPUTFILE, "a+");
     fputs(buffer ,fptr); 
     fclose(fptr);
-    pthread_mutex_unlock(&lock);
-}
-
-void *connThread(void *conn_thread_data_ptr)
-{
-    char   buf[200];
-    int    nbytes, numbytes;
-    struct threads *conn_thread_data = conn_thread_data_ptr;
-    struct stat file;
-     
-    memset(buf, 0, sizeof buf); 
-    for(;;){
-        // get data from a client
-        nbytes = recv(conn_thread_data->new_fd, buf, sizeof buf, 0);
-        
-        // handle data recv'd
-        if (nbytes == 0) {
-            // connection closed
-            printf("aesdsocket: socket %d hung up\n", conn_thread_data->new_fd);
-            conn_thread_data->finished = 1;
-            break;
-        } 
-        if (nbytes < 0) perror("recv");
-        if (nbytes > 0) { // data recv'd
-            // wite to file  
-            pthread_mutex_lock(&lock);
-            if (fptr = open(DATAOUTPUTFILE, O_RDWR | O_CREAT | O_APPEND, 0660) == -1) perror("open");
-            if (write(fptr, buf, nbytes) == -1) perror("write");
-            if (close(fptr) == -1) perror("close");
-            pthread_mutex_unlock(&lock);
-            
-            //find proper position, read from file and return to sender
-            if (fptr = open(DATAOUTPUTFILE, O_RDWR | O_CREAT | O_APPEND, 0660) == -1) perror("open");
-            numbytes = lseek(fptr, 0, SEEK_END);            
-            lseek(fptr, 0, SEEK_SET);
-            printf("file size %d\n", numbytes);
-            text = malloc(numbytes);
-            read(fptr, text, numbytes);
-            
-            //re read output file and send to client
-            if (send(conn_thread_data->new_fd, text, numbytes, 0) == -1) perror("send");
-            close(fptr);
-            free(text);
-        }
-    }
-    return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -255,20 +139,24 @@ int main(int argc, char *argv[])
     pthread_create(&timerThread,NULL, timer, NULL);
     pthread_join(timerThread, NULL);
 
+    fd_set master;    // master file descriptor list
     fd_set read_fds;  // temp file descriptor list for select()
     int fdmax;        // maximum file descriptor number
 
     int listener;     // listening socket descriptor
-    int newfd;        // newly accepted socket descriptor
+    int newfd;        // newly accept()ed socket descriptor
+    struct sockaddr_storage remoteaddr; // client address
     socklen_t addrlen;
+
+    char buf[999999];    // buffer for client data
+    int nbytes;
 
     char remoteIP[INET6_ADDRSTRLEN];
 
-    int tbool=1;        // for setsockopt() SO_REUSEADDR, below
-    int rv;
+    int yes=1;        // for setsockopt() SO_REUSEADDR, below
+    int i, j, rv;
 
     struct addrinfo hints, *ai, *p;
-    struct sockaddr_storage remoteaddr;
 
     FD_ZERO(&master);    // clear the master and temp sets
     FD_ZERO(&read_fds);
@@ -296,7 +184,7 @@ int main(int argc, char *argv[])
         }
         
         // lose the pesky "address already in use" error message
-        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &tbool, sizeof(int));
+        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
         if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
             close(listener);
@@ -326,38 +214,92 @@ int main(int argc, char *argv[])
     // keep track of the biggest file descriptor
     fdmax = listener; // so far, it's this one
 
-    TAILQ_INIT(&head);
-
     // main loop
     for(;;) {
-       // handle new connections
-       addrlen = sizeof remoteaddr;
-       newfd = accept(listener,
-           (struct sockaddr *)&remoteaddr,
-           &addrlen);
-       if (newfd == -1) {
-           perror("accept");
-       } 
-           FD_SET(newfd, &master); // add to master set
-           if (newfd > fdmax) {    // keep track of the max
-               fdmax = newfd;
-           }
-           
-           syslog(LOG_SYSLOG, "Accepted connection from %s", 
-               inet_ntop(remoteaddr.ss_family,
-               get_in_addr((struct sockaddr*)&remoteaddr),
-               remoteIP, INET6_ADDRSTRLEN));
-       
-           printf("aesdsocket: new connection from %s on "
-               "socket %d\n",
-               inet_ntop(remoteaddr.ss_family,
-                   get_in_addr((struct sockaddr*)&remoteaddr),
-                   remoteIP, INET6_ADDRSTRLEN),
-               newfd);
-           
-           node_t *connection_node = NULL;
-           connection_node = _fill_queue(&head, 0, newfd);
-           pthread_create(&(connection_node->ids), NULL, connThread,(void *)connection_node);
-    }
+        read_fds = master; // copy it
+        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("select");
+            exit(4);
+        }
+
+        // run through the existing connections looking for data to read
+        for(i = 0; i <= fdmax; i++) {
+            if (FD_ISSET(i, &read_fds)) { // we got one!!
+                if (i == listener) {
+                    // handle new connections
+                    addrlen = sizeof remoteaddr;
+                    newfd = accept(listener,
+                        (struct sockaddr *)&remoteaddr,
+                        &addrlen);
+
+                    if (newfd == -1) {
+                        perror("accept");
+                    } else {
+                        FD_SET(newfd, &master); // add to master set
+                        if (newfd > fdmax) {    // keep track of the max
+                            fdmax = newfd;
+                        }
+                        
+                        syslog(LOG_SYSLOG, "Accepted connection from %s", 
+                                inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN));
+
+                        printf("aesdsocket: new connection from %s on "
+                            "socket %d\n",
+                            inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN),
+                            newfd);
+                    }
+                } else {
+                    // handle data from a client
+                    memset(buf, 0, sizeof buf); 
+                    if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
+                        // got error or connection closed by client
+                        if (nbytes == 0) {
+                            // connection closed
+                            printf("aesdsocket: socket %d hung up\n", i);
+                            syslog(LOG_SYSLOG, "Closed connection from %s", 
+                                inet_ntop(remoteaddr.ss_family,
+                                get_in_addr((struct sockaddr*)&remoteaddr),
+                                remoteIP, INET6_ADDRSTRLEN));
+
+                        } else {
+                            perror("recv");
+                        }
+                        close(i); // bye!
+                        FD_CLR(i, &master); // remove from master set
+                    } else {
+                        // we got some data from a client
+                        // write to file
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
+                        fputs(buf, fptr);
+                        fclose(fptr);
+                        fptr = fopen(DATAOUTPUTFILE, "a+");
+                        fseek(fptr, 0L, SEEK_END);
+                        long numbytes = ftell(fptr);
+                        fseek(fptr,0L,SEEK_SET);
+                        text = malloc(numbytes);
+                        fread(text, sizeof(char),numbytes, fptr);
+                        for(j = 0; j <= fdmax; j++) {
+                            // send to everyone!
+                            if (FD_ISSET(j, &master)) {
+                                // except the listener and ourselves
+                                if (j != listener) {
+                                    
+                                    if (send(j, text, numbytes , 0) == -1) {
+                                        perror("send");
+                                    }
+                                }
+                            }
+                        }
+                        free(text);
+                    }
+                } // END handle data from client
+            } // END got new incoming connection
+        } // END looping through file descriptors
+    } // END for(;;)--and you thought it would never end!
+    fclose(fptr);
     return 0;
 }

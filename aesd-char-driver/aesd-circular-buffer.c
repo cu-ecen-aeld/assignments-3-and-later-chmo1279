@@ -8,6 +8,8 @@
  *
  */
 
+#include <syslog.h>
+
 #ifdef __KERNEL__
 #include <linux/string.h>
 #else
@@ -28,9 +30,9 @@
 //     struct aesd_buffer_entry  entry[AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED];
 //          An array of pointers to memory allocated for the most recent write operations
 //     
-//     uint8_t in_offs; //The current location in the entry structure where the next write should be stored 
+//     uint8_t in_offs; //The current location in the entry structure where the next write should be stored (max value 255)
 //     
-//     uint8_t out_offs; //The first location in the entry structure to read from
+//     uint8_t out_offs; //The first location in the entry structure to read from (max value 255)
 //     
 //     bool full; //set to true when the buffer entry structure is full
 
@@ -49,6 +51,13 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer,
     /**
     * TODO: implement per description
     */
+    buffer->entry[buffer->in_offs] = *add_entry; //add entry *add_entry to *buffer at index buffer.in_offs
+    syslog(LOG_DEBUG, "string at index number %d is: %s", buffer->in_offs, buffer->entry[buffer->in_offs].buffptr);//#debug: show string just added to buffer 
+    
+    buffer->in_offs++;  //increment write index
+    syslog(LOG_DEBUG, "index incremented to %d", buffer->in_offs);//#debug: check if index is properly incrementing
+    
+    if (buffer->in_offs > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED) buffer->in_offs = 1; //Looping to the first position of the buffer 
 }
 
 /**

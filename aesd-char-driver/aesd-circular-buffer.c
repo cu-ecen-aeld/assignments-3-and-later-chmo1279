@@ -96,11 +96,12 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(//fpos
     }
     
     syslog(LOG_DEBUG, "cat_buff size be like: %ld", strlen(cat_buff));
+    syslog(LOG_DEBUG, "cat_buff be like %s", cat_buff);
     
     if (char_offset <= strlen(cat_buff) && char_offset >= 0){
         int i = char_offset;
         while (cat_buff[i] != '\n') {
-            entry_buff_out[i] = cat_buff[i * char_offset];
+            entry_buff_out[i] = cat_buff[i];
             i++;
         }
         entry_buff_out[i] = '\n';
@@ -111,12 +112,17 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(//fpos
         sprintf(entry_buf_out_intr,"%s", entry_buff_out);
         syslog(LOG_DEBUG, "entry_buf_out_intr: %s", entry_buf_out_intr);
         aesd_buffer_entry_rtn.buffptr = entry_buf_out_intr;
-        aesd_buffer_entry_rtn.size = strlen(entry_buff_out); 
+        aesd_buffer_entry_rtn.size = strlen(entry_buff_out);
+        syslog(LOG_DEBUG,"size of buffer->entry->buffptr: %ld", sizeof buffer->entry->buffptr);
+        syslog(LOG_DEBUG,"char_offset: %ld", char_offset);
+        syslog(LOG_DEBUG,"desired buffer index: %ld", ((char_offset + 1) / (sizeof buffer->entry->buffptr)));
+        entry_offset_byte_rtn = (size_t *)&aesd_buffer_entry_rtn.buffptr; 
         syslog(LOG_DEBUG, "aesd_buffer_entry.buffptr: %ld", sizeof aesd_buffer_entry_rtn.buffptr);
 //        memcpy(&aesd_buffer_entry_rtn.buffptr, entry_buff_out, sizeof(*entry_buff_out)); 
         //free(cat_buff);
         //free(entry_buff_out); 
-        syslog(LOG_DEBUG, "aesd_buffer_entry_rtn->buffptr is %s", aesd_buffer_entry_rtn.buffptr);
+        syslog(LOG_DEBUG, "aesd_buffer_entry_rtn.buffptr is %p", aesd_buffer_entry_rtn.buffptr);
+        syslog(LOG_DEBUG, "entry_offset_byte_rtn is %p", entry_offset_byte_rtn);
         return &aesd_buffer_entry_rtn;//return the struct aesd_buffer_entry which represents the location described by char_offset, or
     } else
         return NULL;//return NULL if this position is not available in the buffer (not enough data is written).

@@ -11,6 +11,7 @@
 #include <syslog.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #ifdef __KERNEL__
 #include <linux/string.h>
@@ -69,7 +70,6 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer,
  *  Finds entry offset for byte position in buffer 
  *   Any necessary locking must be performed by caller.
  */
-
 struct aesd_buffer_entry aesd_buffer_entry_rtn; 
 struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(//fpos: byte position in buffer
                             struct aesd_circular_buffer *buffer, //target buffer to search for corresponding offset.
@@ -82,7 +82,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(//fpos
 //    struct aesd_buffer_entry aesd_buffer_entry_rtn;
 //    aesd_buffer_entry_rtn = buffer->entry[(int)char_offset];
     char *cat_buff = calloc(10, sizeof buffer->entry->buffptr); //buffer for all entries concatinated together
-    char *entry_buff_out = malloc(sizeof buffer->entry->buffptr); //buffer for offset entries concatinated together
+    char *entry_buff_out = malloc(sizeof buffer->entry); //buffer for offset entries concatinated together
 
     uint8_t index;
 //    struct aesd_circular_buffer buffer;
@@ -95,23 +95,27 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(//fpos
         strcat(cat_buff, entry->buffptr);    
     }
     
-    syslog(LOG_DEBUG, "cat_buff be like: %s", cat_buff);
+    syslog(LOG_DEBUG, "cat_buff size be like: %ld", strlen(cat_buff));
     
-    if (char_offset <= sizeof cat_buff && char_offset >= 0){
+    if (char_offset <= strlen(cat_buff) && char_offset >= 0){
         int i = char_offset;
         while (cat_buff[i] != '\n') {
-            entry_buff_out[i] = cat_buff[i];
+            entry_buff_out[i] = cat_buff[i * char_offset];
             i++;
         }
         entry_buff_out[i] = '\n';
         syslog(LOG_DEBUG, "entry_out_buff be like: %s", entry_buff_out);
         syslog(LOG_DEBUG, "entry_buff_out is %ld long", sizeof entry_buff_out);
 //        strcpy((char * restrict)aesd_buffer_entry_rtn.buffptr, (char * restrict)entry_buff_out);
-        aesd_buffer_entry_rtn.buffptr = entry_buff_out;
-        aesd_buffer_entry_rtn.size = sizeof aesd_buffer_entry_rtn.buffptr - 1; 
-        memcpy(aesd_buffer_entry_rtn.buffptr, entry_buff_out, sizeof(entry_buff_out)); 
-        free(cat_buff); 
-        free(entry_buff_out);
+        char entry_buf_out_intr[strlen(entry_buff_out)];
+        sprintf(entry_buf_out_intr,"%s", entry_buff_out);
+        syslog(LOG_DEBUG, "entry_buf_out_intr: %s", entry_buf_out_intr);
+        aesd_buffer_entry_rtn.buffptr = entry_buf_out_intr;
+        aesd_buffer_entry_rtn.size = strlen(entry_buff_out); 
+        syslog(LOG_DEBUG, "aesd_buffer_entry.buffptr: %ld", sizeof aesd_buffer_entry_rtn.buffptr);
+//        memcpy(&aesd_buffer_entry_rtn.buffptr, entry_buff_out, sizeof(*entry_buff_out)); 
+        //free(cat_buff);
+        //free(entry_buff_out); 
         syslog(LOG_DEBUG, "aesd_buffer_entry_rtn->buffptr is %s", aesd_buffer_entry_rtn.buffptr);
         return &aesd_buffer_entry_rtn;//return the struct aesd_buffer_entry which represents the location described by char_offset, or
     } else
